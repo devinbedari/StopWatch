@@ -3,9 +3,9 @@
 // Company: 
 // Engineer: 
 // 
-// Create Date:    11:06:16 05/03/2016 
+// Create Date:    10:25:44 05/13/2016 
 // Design Name: 
-// Module Name:    Debouncer 
+// Module Name:    fourHz 
 // Project Name: 
 // Target Devices: 
 // Tool versions: 
@@ -18,16 +18,29 @@
 // Additional Comments: 
 //
 //////////////////////////////////////////////////////////////////////////////////
-module Debouncer(
-    input button,
-	 input src_clk,
-    output reg deb_sig
+module initFourHz(
+    input src_rst,
+    input src_clk,
+    output reg clk_out
     );
+
+reg [23:0] fourhz; 
 
 always @ (posedge src_clk)
 begin
-deb_sig <= button;
+	if(src_rst)
+	begin
+		fourhz <= 24'd0;
+		clk_out <= 0;
+	end
+	else if (fourhz == 26'd12500000)
+	begin
+		fourhz <= 24'd0;
+		clk_out <= ~clk_out;
+	end
+	else
+		fourhz <= fourhz + 24'd1;	
 end
 
-	
+
 endmodule

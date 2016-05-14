@@ -30,7 +30,7 @@ module clock_divider(
 reg [25:0] onehz; 
 reg [24:0] twohz; 
 reg [23:0] fourhz; 
-reg [24:0] fiftyhz; 
+reg [19:0] fiftyhz; 
 
 
 always @ (posedge src_clk)
@@ -87,15 +87,15 @@ always @ (posedge src_clk)
 begin
 	if(reset)
 	begin
-		fiftyhz <= 25'd0;
+		fiftyhz <= 20'd0;
 		clk_50hz <= 0;
 	end
-	else if (fiftyhz == 25'd1000000)
+	else if (fiftyhz == 20'd250000) //1000000)
 	begin
-		fiftyhz <= 25'd0;
+		fiftyhz <= 20'd0;
 		clk_50hz <= ~clk_50hz;
 	end
 	else
-		fiftyhz <= fiftyhz + 25'd1;	
+		fiftyhz <= fiftyhz + 20'd1;	
 end
 endmodule

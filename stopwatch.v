@@ -19,232 +19,186 @@
 //
 //////////////////////////////////////////////////////////////////////////////////
 module stopwatch(
-	 input btnS,
-	 input btnR,
-	 input [2:0] sw,
-    input clk,
-	 output reg [3:0] an,
-	 output reg [7:0] seg 
+	 btnS,
+	 btnR,
+	 sw,
+    clk,
+	 an,
+	 seg,
+	 Led,
+	 LedA,
+	 LedB
     );
 
+input btnS;
+input btnR;
+output reg [2:0] Led;
+output reg [1:0] LedA;
+output reg LedB;
+input [2:0] sw;
+input clk;
+output reg [3:0] an;
+output reg [7:0] seg;
+
+//////////////////////////////////////////////////////////////////////////////////
+//                               Initialize Reset                               //
+//////////////////////////////////////////////////////////////////////////////////
+reg rst;
+initial 
+begin 
+rst <= 0;
+end
+
+//////////////////////////////////////////////////////////////////////////////////
+//                            Initial Four Hz Clock                             //
+//////////////////////////////////////////////////////////////////////////////////
+wire init_fourHz;
+initFourHz initfourhz(.src_rst(rst), .src_clk(clk), .clk_out(init_fourHz));
 
 ///////////////////////////////////////////////////////////////////////////////////
 //                               Debouncing PushButtons                          //
 ///////////////////////////////////////////////////////////////////////////////////
-
-// Debounce the left button
-wire rst;
-Debouncer d1(.button(btnS), .src_rst(rst), .src_clk(clk), .deb_sig(rst));
+wire rst_db;
+// Debounce the center button
+Debouncer d1(.button(btnS), .src_clk(init_fourHz), .deb_sig(rst_db));
 
 // Debounce the right button
 wire btnR_db;
-Debouncer d2(.button(btnR), .src_rst(rst), .src_clk(clk), .deb_sig(btnR_db));
+Debouncer d2(.button(btnR), .src_clk(init_fourHz), .deb_sig(btnR_db));
+
+always @ (posedge clk)
+begin
+	rst <= btnS; //rst_db;
+	LedA[1] <= rst;
+end
+
+wire oneHz, twoHz, fourHz, fiftyHz;
+clock_divider ckdv(.reset(rst), .src_clk(clk), .clk_1hz(oneHz), .clk_2hz(twoHz), .clk_4hz(fourHz), .clk_50hz(fiftyHz));
 
 ///////////////////////////////////////////////////////////////////////////////////
 //                                Setting Pause Value                            //
 ///////////////////////////////////////////////////////////////////////////////////
-
 reg pause;
 
 always @ (posedge clk)
 begin
 	// Set pause to 0 on reset
 	if(rst)
-	begin
 		pause <= 0;
-	end
-	
-	// Set pause to the opposite of what it is, when pause is pressed
-	if(btnR_db)
+	else	// Set pause to the opposite of what it is, when pause is pressed
 	begin
-		pause <= ~pause;
+		pause <= btnR_db;
+		LedA[0] <= pause;
 	end
 end 
 
-//////////////////////////////////////////////////////////////////////////////////
-//                             Clock Divider Output                             //
-//////////////////////////////////////////////////////////////////////////////////
-wire oneHz, twoHz, fourHz, fiftyHz;
-clock_divider ckdv(.reset(rst), .src_clk(clk), .clk_1hz(oneHz), .clk_2hz(twoHz), .clk_4hz(fourHz), .clk_50hz(fiftyHz));
+///////////////////////////////////////////////////////////////////////////////////
+//                                  Debugging LEDs                               //
+///////////////////////////////////////////////////////////////////////////////////
+always @ (posedge clk)
+begin
+	Led[0] = sw[0];
+	Led[1] = sw[1];
+	Led[2] = sw[2];
+end 
 
 //////////////////////////////////////////////////////////////////////////////////
 //                                 Implementation                               //
 //////////////////////////////////////////////////////////////////////////////////
-reg [3:0] s_units;
-reg [3:0] s_tens;
-reg [3:0] m_units;
-reg [3:0] m_tens;
+wire [3:0] s_units;
+wire [3:0] s_tens;
+wire [3:0] m_units;
+wire [3:0] m_tens;
+reg [11:0] secs;
 
+initial begin
+secs <= 0;
+end
+ 
 // Store the counter's values in a wire
-wire [3:0] cnt_val_one;
-wire [3:0] cnt_val_two;
-modulo10_counter mtc_one(.src_rst(rst), .src_clk(oneHz), .out(cnt_val_one));
-modulo10_counter mtc_two(.src_rst(rst), .src_clk(twoHz), .out(cnt_val_two));
+// wire [3:0] cnt_val_one;
+// wire [3:0] cnt_val_two;
+// modulo10_counter mtc_one(.src_rst(rst), .src_clk(oneHz), .out(cnt_val_one));
+// modulo10_counter mtc_two(.src_rst(rst), .src_clk(twoHz), .out(cnt_val_two));
 
-// 1Hz clock segments
-always @ (posedge clk)
+// Check mode and clock speed
+wire clk_speed;
+assign clk_speed = ((sw[0] == 1 && sw[1] == 0) ? twoHz : oneHz);
+
+// Count Up
+always @ (posedge clk_speed)
 begin
-
-	// Reset sets all digits to zero
-	if( rst )
+	// Reset
+	if (rst)
 	begin
-		s_units <= 0;
-		s_tens <= 0;
-		m_units <= 0;
-		m_tens <= 0;
+		secs <= 0;
+		LedB <= 1;
 	end
-	
-	// for adj = 0 implies normal stopwatch
-	else if( sw[0] == 0 && sw[1] == 0 && pause == 0)
+	// Regular clock mode
+	else if (sw[0] == 0 && sw[0] == 0 && pause == 0)
 	begin
-		// An hour is up; make all digits zero
-		if (m_tens == 5 && m_units == 9 && s_tens == 5 && s_units == 9)
+		// 3600 seconds have elapsed
+		if (secs == 3600)
 		begin
-			m_tens <= 0;
-			m_units <= 0;
-			s_tens <= 0;
-			s_units <= 0;
+			secs <= 0;
+			LedB <= 0;
 		end
-			
-		// x9:59 is done, where x!=5
-		else if (m_units == 9 && s_tens == 5 && s_units == 9)
-		begin
-			m_tens <= m_tens + 4'b1;
-			m_units <= 0;
-			s_tens <= 0;
-			s_units <= 0;
-		end 
-			
-		// 0x:59 is done, where x!= 9
-		else if (s_units == 9 && s_tens == 5)
-		begin
-			m_units <= m_units + 4'b1;
-			s_tens <= 0;
-			s_units <= 0;
-		end
-			
-		// 00:x9 is done, where x!=5
-		else if ( s_units == 9 )
-		begin 
-			s_tens <= s_tens + 4'b1;
-			s_units <= 0;
-		end
-			
-		// set the unit digits to 0
+		// Otherwise increment by one
 		else
 		begin
-			s_units <= cnt_val_one;
+			secs <= secs + 12'd1;
+			LedB <= 0;
 		end
 	end
-	
-	// In adjust mode
+	// Adjustment Mode
 	else if (sw[0] == 1 && sw[1] == 0 && pause == 0)
 	begin
-	
-		// Up minutes 
-		if(sw[2] == 0)
+		// 3600 or more seconds have elapsed
+		if (secs >= 3600)
 		begin
-			// Set the at 59
-			if(m_tens == 5 && m_units == 9)
-			begin
-				m_tens <= 0;
-				m_units <= 0;
-			end
-			
-			// At x9, where x!=5
-			else if(m_units == 9)
-			begin
-				m_tens <= m_tens + 4'b1;
-				m_units <= 0;
-			end
-			
-			// Set the units to the counter values
-			else
-			begin
-				m_units <= cnt_val_two;
-			end
-			
+			secs <= secs - 3600;
+			LedB <= 0;
 		end
-		
-		// Up seconds
+		// Otherwise increment by one
 		else
 		begin
-		
-			// Set the at 59
-			if(s_tens == 5 && s_units == 9)
+			// minute mode?
+			if(sw[2] == 0)
 			begin
-				s_tens <= 0;
-				s_units <= 0;
+				secs <= secs + 12'd60;
+				LedB <= 0;
 			end
-			
-			// At x9, where x!=5
-			else if(s_units == 9)
-			begin
-				s_tens <= s_tens + 4'b1;
-				s_units <= 0;
-			end
-			
-			// Set the units place as per the module output
+			// seconds mode?
 			else
 			begin
-				s_units <= cnt_val_two;
+				secs <= secs + 12'd1;
+				LedB <= 0;
 			end
-			
 		end
 	end
-	
-	// Adj is in countdown mode
-	else if ( sw[0] == 0 && sw[1] == 1 && pause == 0 )
+	// Countdown mode
+	else if (sw[0] == 0 && sw[1] == 1 && pause == 0 )
 	begin
-		// 00:00 -> 59:59
-		if (m_tens == 0 && m_units == 0 && s_tens == 0 && s_units == 0)
+		LedB <= 1;
+		if (secs == 0)
 		begin
-			m_tens <= 5;
-			m_units <= 9;
-			s_tens <= 5;
-			s_units <= 9;
+			secs <= 3600;
+			//LedB <= 0;
 		end
-			
-		// x0:00 -> (x-1)9:59 for x!=0
-		else if (m_units == 0 && s_tens == 0 && s_units == 0)
-		begin
-			m_tens <= m_tens - 4'b1;
-			m_units <= 9;
-			s_tens <= 5;
-			s_units <= 9;
-		end 
-			
-		// yx:00 -> y(x-1):59 for x!=0
-		else if (s_units == 0 && s_tens == 0)
-		begin
-			m_units <= m_units - 4'b1;
-			s_tens <= 5;
-			s_units <= 9;
-		end
-		
-		//zy:x0 -> zy:(x-1)9 for x!=0
-		else if ( s_units == 0 )
-		begin 
-			s_tens <= s_tens - 4'b1;
-			s_units <= 9;
-		end
-			
-		// set the unit digits to 0
 		else
 		begin
-			s_units <= 4'd9 - cnt_val_one;
+			secs <= secs - 12'd1;
+			//LedB <= 0;
 		end
 	end
-	
 	// Pause
 	else
 	begin
-		s_units <= s_units;
-		s_tens <= s_tens;
-		m_units <= m_units;
-		m_tens <= m_tens;
+		secs <= secs;
 	end
 end
+
+digitDivider digDiv(.src_clk(clk), .src_rst(rst) ,.seconds(secs),.sec_u(s_units),.sec_t(s_tens),.min_u(m_units),.min_t(m_tens));
 
 //////////////////////////////////////////////////////////////////////////////////
 //                               Display 7-Segment                              //
@@ -252,6 +206,7 @@ end
 
 // Assign the digit_value register with the correct data
 reg [3:0] digit_value [0:3];
+
 always @ (posedge clk)
 begin
 	if(rst)
@@ -280,7 +235,7 @@ begin
 		digPos <= 0;
 		decp <= 0;
 	end
-	else if (digPos == 2)
+	if (digPos == 1)
 	begin
 		decp <= 1;
 		digPos <= digPos + 2'b01;
@@ -303,4 +258,17 @@ begin
 	an <= an_val;
 	seg <= seg_val;
 end
+
+/*
+//////////////////////////////////////////////////////////////////////////////////
+//                                Implement Reset                               //
+//////////////////////////////////////////////////////////////////////////////////
+
+always @ (posedge clk)
+begin
+	rst <= rst_db;
+	LedA[1] <= rst;
+end
+*/
+
 endmodule
