@@ -33,7 +33,7 @@ begin
 		fourhz <= 24'd0;
 		clk_out <= 0;
 	end
-	else if (fourhz == 26'd12500000)
+	else if (fourhz == 26'd6250000)
 	begin
 		fourhz <= 24'd0;
 		clk_out <= ~clk_out;
@@ -44,3 +44,4 @@ end
 
 
 endmodule
+

@@ -52,23 +52,23 @@ end
 //////////////////////////////////////////////////////////////////////////////////
 //                            Initial Four Hz Clock                             //
 //////////////////////////////////////////////////////////////////////////////////
-wire init_fourHz;
-initFourHz initfourhz(.src_rst(rst), .src_clk(clk), .clk_out(init_fourHz));
+wire init_eightHz;
+initFourHz initEightHz(.src_rst(rst), .src_clk(clk), .clk_out(init_eightHz));
 
 ///////////////////////////////////////////////////////////////////////////////////
 //                               Debouncing PushButtons                          //
 ///////////////////////////////////////////////////////////////////////////////////
 wire rst_db;
 // Debounce the center button
-Debouncer d1(.button(btnS), .src_clk(init_fourHz), .deb_sig(rst_db));
+Debouncer d1(.button(btnS), .src_clk(init_eightHz), .deb_sig(rst_db));
 
 // Debounce the right button
 wire btnR_db;
-Debouncer d2(.button(btnR), .src_clk(init_fourHz), .deb_sig(btnR_db));
+Debouncer d2(.button(btnR), .src_clk(init_eightHz), .deb_sig(btnR_db));
 
 always @ (posedge clk)
 begin
-	rst <= btnS; //rst_db;
+	rst <= rst_db; //rst_db;
 	LedA[1] <= rst;
 end
 
@@ -80,14 +80,22 @@ clock_divider ckdv(.reset(rst), .src_clk(clk), .clk_1hz(oneHz), .clk_2hz(twoHz),
 ///////////////////////////////////////////////////////////////////////////////////
 reg pause;
 
+// Start in paused mode
+initial
+begin
+	pause <= 1;
+end
+
+// 
 always @ (posedge clk)
 begin
 	// Set pause to 0 on reset
 	if(rst)
 		pause <= 0;
-	else	// Set pause to the opposite of what it is, when pause is pressed
+	// Set pause to the opposite of what it is, when pause is pressed
+	else if (btnR_db)
 	begin
-		pause <= btnR_db;
+		pause <= ~pause;
 		LedA[0] <= pause;
 	end
 end 
@@ -121,68 +129,70 @@ end
 // modulo10_counter mtc_one(.src_rst(rst), .src_clk(oneHz), .out(cnt_val_one));
 // modulo10_counter mtc_two(.src_rst(rst), .src_clk(twoHz), .out(cnt_val_two));
 
-// Check mode and clock speed
+// Check mode and clock speed; double clock speed for adjust mode
 wire clk_speed;
 assign clk_speed = ((sw[0] == 1 && sw[1] == 0) ? twoHz : oneHz);
 
+// Check the mode
+wire [1:0] mode;
+assign mode[0] = sw[0];
+assign mode[1] = sw[1]; 
+
 // Count Up
-always @ (posedge clk_speed)
+always @ (posedge clk_speed) //or rst)
 begin
 	// Reset
 	if (rst)
 	begin
 		secs <= 0;
-		LedB <= 1;
+		LedB <= 0;
 	end
 	// Regular clock mode
-	else if (sw[0] == 0 && sw[0] == 0 && pause == 0)
+	else if (mode == 0 && pause == 0)
 	begin
+		LedB <= 0;
 		// 3600 seconds have elapsed
 		if (secs == 3600)
 		begin
 			secs <= 0;
-			LedB <= 0;
 		end
 		// Otherwise increment by one
 		else
 		begin
 			secs <= secs + 12'd1;
-			LedB <= 0;
 		end
 	end
 	// Adjustment Mode
-	else if (sw[0] == 1 && sw[1] == 0 && pause == 0)
+	else if (mode == 1 && pause == 0)
 	begin
+		LedB <= 0;
 		// 3600 or more seconds have elapsed
-		if (secs >= 3600)
+		if (secs >= 3599)
 		begin
-			secs <= secs - 3600;
-			LedB <= 0;
+			secs <= secs - 12'd3599;
 		end
 		// Otherwise increment by one
 		else
 		begin
 			// minute mode?
-			if(sw[2] == 0)
+			if(sw[2] == 1)
 			begin
 				secs <= secs + 12'd60;
-				LedB <= 0;
 			end
 			// seconds mode?
 			else
 			begin
 				secs <= secs + 12'd1;
-				LedB <= 0;
 			end
 		end
 	end
 	// Countdown mode
-	else if (sw[0] == 0 && sw[1] == 1 && pause == 0 )
+	else if (mode == 2 && pause == 0 )
 	begin
 		LedB <= 1;
 		if (secs == 0)
 		begin
-			secs <= 3600;
+			secs <= 3599;
 			//LedB <= 0;
 		end
 		else
@@ -195,10 +205,12 @@ begin
 	else
 	begin
 		secs <= secs;
+		LedB <= 0;
 	end
 end
 
-digitDivider digDiv(.src_clk(clk), .src_rst(rst) ,.seconds(secs),.sec_u(s_units),.sec_t(s_tens),.min_u(m_units),.min_t(m_tens));
+// Uncomment the .src_rst(rst) if we decide to include the reset in the functionality here (I dont think we should)
+digitDivider digDiv(.src_clk(clk), .src_rst(rst), .seconds(secs),.sec_u(s_units),.sec_t(s_tens),.min_u(m_units),.min_t(m_tens));
 
 //////////////////////////////////////////////////////////////////////////////////
 //                               Display 7-Segment                              //
@@ -250,13 +262,41 @@ end
 // Set the seven segment display
 wire [3:0]an_val;
 wire [7:0]seg_val;
-display_digit dispDig(.select(digPos), .digit_val(digit_value[digPos]), .dp(decp), .src_clk(fiftyHz), .src_rst(rst), .anode(an_val), .segment(seg_val));
+display_digit dispDig(.select(digPos), .digit_val(digit_value[digPos]), .dp(decp), .src_clk(fiftyHz), /*.src_rst(rst),*/ .anode(an_val), .segment(seg_val));
+
+// The blink operation
+reg count_four;
+
+always @ (posedge fourHz)
+begin 
+	count_four <= fourHz;
+end
 
 // Assign anode and cathode values
 always @ (posedge fiftyHz)
 begin 
-	an <= an_val;
-	seg <= seg_val;
+	// Adjust mode
+	if (mode == 2)
+	begin 
+		// Turn off the anode
+		if (count_four == 1)
+		begin
+			an <= 4'b1111;
+			seg <= seg_val;
+		end
+		// Turn on the anode
+		else
+		begin
+			an <= an_val;
+			seg <= seg_val;
+		end
+	end
+	// Non-Adjust mode
+	else
+	begin
+		an <= an_val;
+		seg <= seg_val;
+	end
 end
 
 /*
