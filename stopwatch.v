@@ -44,16 +44,12 @@ output reg [7:0] seg;
 //                               Initialize Reset                               //
 //////////////////////////////////////////////////////////////////////////////////
 reg rst;
-initial 
-begin 
-rst <= 0;
-end
 
 //////////////////////////////////////////////////////////////////////////////////
 //                            Initial Four Hz Clock                             //
 //////////////////////////////////////////////////////////////////////////////////
 wire init_eightHz;
-initFourHz initEightHz(.src_rst(rst), .src_clk(clk), .clk_out(init_eightHz));
+initFourHz initEightHz(.src_rst(1'b0), .src_clk(clk), .clk_out(init_eightHz));
 
 ///////////////////////////////////////////////////////////////////////////////////
 //                               Debouncing PushButtons                          //
@@ -66,34 +62,24 @@ Debouncer d1(.button(btnS), .src_clk(init_eightHz), .deb_sig(rst_db));
 wire btnR_db;
 Debouncer d2(.button(btnR), .src_clk(init_eightHz), .deb_sig(btnR_db));
 
-always @ (posedge clk)
+always @ (*) //(posedge clk)
 begin
 	rst <= rst_db; //rst_db;
 	LedA[1] <= rst;
 end
 
 wire oneHz, twoHz, fourHz, fiftyHz;
-clock_divider ckdv(.reset(rst), .src_clk(clk), .clk_1hz(oneHz), .clk_2hz(twoHz), .clk_4hz(fourHz), .clk_50hz(fiftyHz));
+clock_divider ckdv(.reset(1'b0), .src_clk(clk), .clk_1hz(oneHz), .clk_2hz(twoHz), .clk_4hz(fourHz), .clk_50hz(fiftyHz));
 
 ///////////////////////////////////////////////////////////////////////////////////
 //                                Setting Pause Value                            //
 ///////////////////////////////////////////////////////////////////////////////////
 reg pause;
 
-// Start in paused mode
-initial
+// Debounced pause
+always @ (*) // posedge clk)
 begin
-	pause <= 1;
-end
-
-// 
-always @ (posedge clk)
-begin
-	// Set pause to 0 on reset
-	if(rst)
-		pause <= 0;
-	// Set pause to the opposite of what it is, when pause is pressed
-	else if (btnR_db)
+	if (btnR_db)
 	begin
 		pause <= ~pause;
 		LedA[0] <= pause;
@@ -139,7 +125,7 @@ assign mode[0] = sw[0];
 assign mode[1] = sw[1]; 
 
 // Count Up
-always @ (posedge clk_speed) //or rst)
+always @ (posedge clk_speed or posedge rst ) //or rst)
 begin
 	// Reset
 	if (rst)
@@ -147,70 +133,72 @@ begin
 		secs <= 0;
 		LedB <= 0;
 	end
-	// Regular clock mode
-	else if (mode == 0 && pause == 0)
+	else if (pause == 1)
 	begin
-		LedB <= 0;
-		// 3600 seconds have elapsed
-		if (secs == 3600)
-		begin
-			secs <= 0;
-		end
-		// Otherwise increment by one
-		else
-		begin
-			secs <= secs + 12'd1;
-		end
+		//secs <= secs;
+		LedB <= 1;
 	end
-	// Adjustment Mode
-	else if (mode == 1 && pause == 0)
+	else
 	begin
-		LedB <= 0;
-		// 3600 or more seconds have elapsed
-		if (secs >= 3599)
+		// Regular clock mode
+		if (mode == 0 && pause != 1)
 		begin
-			secs <= secs - 12'd3599;
-		end
-		// Otherwise increment by one
-		else
-		begin
-			// minute mode?
-			if(sw[2] == 1)
+			LedB <= 0;
+			// 3600 seconds have elapsed
+			if (secs == 3599)
 			begin
-				secs <= secs + 12'd60;
+				secs <= 0;
 			end
-			// seconds mode?
+			// Otherwise increment by one
 			else
 			begin
 				secs <= secs + 12'd1;
 			end
 		end
-	end
-	// Countdown mode
-	else if (mode == 2 && pause == 0 )
-	begin
-		LedB <= 1;
-		if (secs == 0)
+		// Adjustment Mode
+		else if (mode == 1 && pause != 1)
 		begin
-			secs <= 3599;
-			//LedB <= 0;
+			LedB <= 0;
+			// 3600 or more seconds have elapsed
+			if (secs >= 3599)
+			begin
+				secs <= secs - 12'd3599;
+			end
+			// Otherwise increment by one
+			else
+			begin
+				// minute mode?
+				if(sw[2] == 1)
+				begin
+					secs <= secs + 12'd60;
+				end
+				// seconds mode?
+				else
+				begin
+					secs <= secs + 12'd1;
+				end
+			end
 		end
-		else
+		// Countdown mode
+		else // (mode == 2 && pause != 1 )
 		begin
-			secs <= secs - 12'd1;
-			//LedB <= 0;
+			LedB <= 0;
+			if (secs == 0)
+			begin
+				secs <= 3599;
+				//LedB <= 0;
+			end
+			else
+			begin
+				secs <= secs - 12'd1;
+				//LedB <= 0;
+			end
 		end
-	end
-	// Pause
-	else
-	begin
-		secs <= secs;
-		LedB <= 0;
 	end
 end
 
 // Uncomment the .src_rst(rst) if we decide to include the reset in the functionality here (I dont think we should)
-digitDivider digDiv(.src_clk(clk), .src_rst(rst), .seconds(secs),.sec_u(s_units),.sec_t(s_tens),.min_u(m_units),.min_t(m_tens));
+digitDivider digDiv(.src_clk(clk), .src_rst(1'b0), .seconds(secs),.sec_u(s_units),.sec_t(s_tens),.min_u(m_units),.min_t(m_tens));
 
 //////////////////////////////////////////////////////////////////////////////////
 //                               Display 7-Segment                              //
@@ -267,22 +255,43 @@ display_digit dispDig(.select(digPos), .digit_val(digit_value[digPos]), .dp(decp
 // The blink operation
 reg count_four;
 
+initial
+begin
+	count_four <= 0;
+end
+
 always @ (posedge fourHz)
 begin 
-	count_four <= fourHz;
+	count_four <= ~count_four;
 end
 
 // Assign anode and cathode values
 always @ (posedge fiftyHz)
 begin 
 	// Adjust mode
-	if (mode == 2)
+	if (mode == 1)
 	begin 
 		// Turn off the anode
 		if (count_four == 1)
 		begin
-			an <= 4'b1111;
-			seg <= seg_val;
+			// minute mode
+			if (sw[2] == 1)
+			begin
+				an[0] <= an_val[0];
+				an[1] <= an_val[1];
+				an[2] <= 1'b1;
+				an[3] <= 1'b1;
+				seg <= seg_val;
+			end
+			// Second mode
+			else
+			begin
+				an[0] <= 1'b1;
+				an[1] <= 1'b1;
+				an[2] <= an_val[2];
+				an[3] <= an_val[3];
+				seg <= seg_val;
+			end	
 		end
 		// Turn on the anode
 		else
