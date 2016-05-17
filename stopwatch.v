@@ -77,13 +77,11 @@ clock_divider ckdv(.reset(1'b0), .src_clk(clk), .clk_1hz(oneHz), .clk_2hz(twoHz)
 reg pause;
 
 // Debounced pause
-always @ (*) // posedge clk)
+always @ (posedge btnR_db) // posedge clk)
 begin
-	if (btnR_db)
-	begin
 		pause <= ~pause;
 		LedA[0] <= pause;
-	end
+
 end 
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -124,8 +122,10 @@ wire [1:0] mode;
 assign mode[0] = sw[0];
 assign mode[1] = sw[1]; 
 
+
+ 
 // Count Up
-always @ (posedge clk_speed or posedge rst ) //or rst)
+always @ (posedge clk_speed or posedge rst)
 begin
 	// Reset
 	if (rst)
@@ -180,7 +180,7 @@ begin
 			end
 		end
 		// Countdown mode
-		else // (mode == 2 && pause != 1 )
+		else if (mode == 2 && pause != 1 )
 		begin
 			LedB <= 0;
 			if (secs == 0)
@@ -193,6 +193,9 @@ begin
 				secs <= secs - 12'd1;
 				//LedB <= 0;
 			end
+		end
+		else //do nothing
+		begin
 		end
 	end
 end
